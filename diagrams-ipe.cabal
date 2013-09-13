@@ -16,21 +16,26 @@ build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
 
-Hs-source-dirs: src
-
 library
 
   Hs-source-dirs: src
   --
 
-  -- exposed-modules:
+  exposed-modules: Diagrams.Backend.Ipe.Render
+                   Diagrams.Backend.Ipe.Types
+
   -- other-modules:
   -- other-extensions:
   build-depends:
       base                    >= 4.6      && < 4.7
     , diagrams-core           >= 0.7      && < 0.8
-    , diagrams-lib            >= 0.7.1 && < 0.8
-    , vector-space            >= 0.7   && < 0.9
-    -- , text                    >= 0.11.2.0 && < 0.12
+    , diagrams-lib            >= 0.7.1    && < 0.8
+    , vector-space            >= 0.7      && < 0.9
+    , text                    >= 0.11.2.0 && < 0.12
+    , text-format             >= 0.3.0.7  && < 0.4
+    , xml-conduit             >= 1.1.0.7  && < 1.2
+    , xml-hamlet              >= 0.4.0.5  && < 0.5
+    , containers              >= 0.5      && < 0.6
+
 
   default-language:    Haskell2010
