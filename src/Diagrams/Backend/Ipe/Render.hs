@@ -12,7 +12,7 @@ module Diagrams.Backend.Ipe.Render where
 import Prelude hiding (writeFile)
 
 
-import Diagrams.Core.Style(getAttr, AttributeClass, addAttr )
+import Diagrams.Core.Style(getAttr, AttributeClass, Style, addAttr )
 import Diagrams.TwoD.Types
 import Diagrams.Backend.Ipe.Types
 
@@ -298,15 +298,14 @@ ipeObjectList ONil         = []
 ipeObjectList (OCons o os) = (NodeElement . ipeObject $ o) : ipeObjectList os
 
 
--- TODO: the real attributes here
-commonAttributes s = attributes [ attr (a :: Maybe Title)
-                                , attr (a :: Maybe Author)
-                                , attr (a :: Maybe Subject)
-                                --                             , attr (a :: Maybe Keywords)
-                                , attr (a :: Maybe PageMode)
-                                , attr (a :: Maybe Created)
-                                , attr (a :: Maybe Modified)
-                                , attr (a :: Maybe NumberPages)
+
+
+--------------------------------------------------------------------------------
+
+commonAttributes   :: Style v -> AttrMap
+commonAttributes s = attributes [ attr (a :: Maybe Layer)
+                                , attr (a :: Maybe Pin)
+                                , attr (a :: Maybe Transformations)
                                 ]
     where
       a :: forall a. AttributeClass a => Maybe a
@@ -314,6 +313,22 @@ commonAttributes s = attributes [ attr (a :: Maybe Title)
 
 
 
+
+instance ToAttribute Layer where
+    atName = const "layer"
+    atVal  = getLast . layer'
+
+instance ToAttribute Pin where
+    atName  = const "pin"
+    atVal v = case getLast . pin' $ v of
+                Pinned     -> "yes"
+                Horizontal -> "h"
+                Vertical   -> "v"
+
+
+instance ToAttribute Transformations  where
+    atName = const "transformations"
+    atVal  = T.toLower . showT . getLast . transformations'
 
 --------------------------------------------------------------------------------
 

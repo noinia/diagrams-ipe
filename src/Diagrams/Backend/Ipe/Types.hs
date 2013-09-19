@@ -292,41 +292,53 @@ data IpeObjectList o where
 -- | Common Attributes
 
 
+instance AttributeClass Layer
+---- instance AttributeClass Matrix
+instance AttributeClass Pin
+instance AttributeClass Transformations
+
+
+
+----------------------------------------
+
+newtype Layer = Layer { layer' :: Last LayerDefinition }
+              deriving (Show,Eq,Ord,Semigroup,Typeable)
+
+-- newtype Matrix = Layer { ' :: Last Matrx3 a }
+--               deriving (Show,Eq,Ord,Semigroup,Typeable)
+
+newtype Pin = Pin {pin' :: Last PinType}
+    deriving (Eq,Typeable,Semigroup)
+
+newtype Transformations = Transformations {transformations' :: Last TransformationType}
+    deriving (Eq,Typeable,Semigroup)
 
 
 
 
 
 
-newtype Pin = Pin (Maybe PinType)
-    deriving (Eq)
+data PinType = Pinned | Horizontal | Vertical
+         deriving (Show,Eq,Typeable)
 
-data PinType = Yes | Horizontal | Vertical
-         deriving (Eq)
-
-instance Show PinType where
-    show Yes = "yes"
-    show Horizontal = "h"
-    show Vertical   = "v"
 
 
 data TransformationType = Affine | Rigid | Translations
-                        deriving (Eq)
-
-instance Show TransformationType where
-    show Affine       = "affine"
-    show Rigid        = "rigid"
-    show Translations = "translations"
+                        deriving (Show,Eq,Typeable)
 
 
 type Matrix a = a
 
--- data CommonAttributes = CA { layer           :: Maybe LayerDefinition
---                            , matrix          :: Maybe Matrix
---                            , pin             :: Maybe Pin
---                            , transformations :: Maybe TransformationType
---                            }
 
+
+layer :: HasStyle a => LayerDefinition -> a -> a
+layer = applyAt Layer
+
+pin :: HasStyle a => PinType -> a -> a
+pin = applyAt Pin
+
+transformations :: HasStyle a => TransformationType -> a -> a
+transformations = applyAt Transformations
 
 
 
