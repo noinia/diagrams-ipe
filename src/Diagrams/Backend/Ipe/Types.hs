@@ -1,51 +1,138 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Diagrams.Backend.Ipe.Types where
 
 import Numeric
 
 import Diagrams.TwoD.Types
+import Diagrams.Core.Style
+import Diagrams.Core.V
 
+
+import Data.Default
 import Data.Ratio
-import Data.Monoid
+import Data.Semigroup
 import Data.Text(Text)
+import Data.Typeable
 
 import qualified Data.Map  as M
 import qualified Data.Text as T
---------------------------------------------------------------------------------
 
+
+
+
+--------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
 -- | Info
 
-data PageMode = FullScreen
-              deriving (Eq)
+newtype Info = Info (Style ())
 
-instance Show PageMode where
+type instance V Info = ()
+
+instance HasStyle Info where
+    applyStyle s (Info s') = Info $ s <> s'
+
+instance Default Info where
+    def = Info mempty
+
+--------------------------------------------------------------------------------
+-- | Attributes for Info
+
+instance AttributeClass Title
+instance AttributeClass Subject
+instance AttributeClass Author
+-- instance AttributeClass Keyword
+instance AttributeClass NumberPages
+instance AttributeClass Created
+instance AttributeClass Modified
+instance AttributeClass PageMode
+
+
+
+
+
+
+
+
+
+newtype Title = Title { title' :: Last Text }
+              deriving (Show,Eq,Ord,Semigroup,Typeable)
+
+newtype Subject = Subject { subject' :: Last Text }
+                deriving (Show,Eq,Ord,Semigroup,Typeable)
+
+newtype Author = Author { author' :: Last Text }
+               deriving (Show,Eq,Ord,Semigroup,Typeable)
+
+newtype Keyword = Keyword { keyword' :: Last Text }
+                deriving (Show,Eq,Ord,Typeable)
+
+-- TODO: instance semigroup that adds this to a list or so
+
+newtype NumberPages = NumberPages { numberPages' :: Last Bool }
+                    deriving (Eq,Typeable,Semigroup)
+
+newtype Created = Created { created' :: Last DateTime }
+    deriving (Show,Eq,Ord,Semigroup,Typeable)
+
+newtype Modified = Modified { modified' :: Last DateTime }
+    deriving (Show,Eq,Ord,Semigroup,Typeable)
+
+
+newtype PageMode = PageMode { pageMode' :: Last FullScreen }
+                 deriving (Show,Eq,Typeable,Semigroup)
+
+
+
+data FullScreen = FullScreen
+                deriving (Eq,Typeable)
+
+instance Show FullScreen where
     show FullScreen = "fullscreen"
 
-newtype NumberPages = NumberPages Bool
-                    deriving (Eq)
 
-instance Show PageMode where
-    show (NumberPages False) = "no"
-    show (NumberPages True)  = "yes"
 
-newtype DateTime = DateTime Text
+newtype DateTime = DateTime (Last Text)
+    deriving (Eq,Ord,Typeable,Semigroup)
 
 instance Show DateTime where
-    show dt = "D:" <> show dt
+    show (DateTime (Last t)) = "D:" <> show t
 --    creation time in PDF format, e.g. "D:20030127204100".
 
+toStyle   :: AttributeClass a => (Last t -> a) -> t -> Style v
+toStyle f = attrToStyle . f . Last
 
-data Info = Info { title       :: Maybe Text        -- ^ title
-                 , author      :: Maybe Text        -- ^ author
-                 , subject     :: Maybe Text        -- ^ subject
-                 , keywords    :: [Text]            -- ^ keywords
-                 , pagemode    :: Maybe PageMode    -- ^ pagemode
-                 , created     :: Maybe DateTime    -- ^ created date
-                 , modified    :: Maybe DateTime    -- ^ modified date
-                 , numberPages :: Maybe NumberPages -- ^ visible pagenumbers in pdf
-                 }
-          deriving (Show,Eq)
+applyAt     :: (HasStyle b, AttributeClass a) => (Last t -> a) -> t -> b -> b
+applyAt f t = applyStyle (toStyle f t)
+
+
+
+title :: HasStyle a => Text -> a -> a
+title = applyAt Title
+
+subject :: HasStyle a => Text -> a -> a
+subject = applyAt Subject
+
+author :: HasStyle a => Text -> a -> a
+author = applyAt Author
+
+numberPages :: HasStyle a => Bool -> a -> a
+numberPages = applyAt NumberPages
+
+pagemode :: HasStyle a => FullScreen -> a -> a
+pagemode = applyAt PageMode
+
+created :: HasStyle a => DateTime -> a -> a
+created = applyAt Created
+
+modified :: HasStyle a => DateTime -> a -> a
+modified = applyAt Modified
+
 
 --------------------------------------------------------------------------------
 -- | IpeStyle
@@ -106,8 +193,8 @@ data Bitmap = Bitmap { identifier     :: Int
 
 
 -- | Represents the <page> tag
-data Page a = Page [LayerDefinition] [ViewDefinition] [Object a]
-              deriving (Eq, Show)
+-- data Page a = Page [LayerDefinition] [ViewDefinition] [Object a]
+--               deriving (Eq, Show)
 
 
 type LayerDefinition = Text
@@ -122,8 +209,94 @@ data ViewDefinition = ViewDefinition { layerNames      :: [Text]
 --------------------------------------------------------------------------------
 -- | An ipe-object. The main ``thing'' that defines the drawings
 
+data IpeObject o where
+    PathO         :: IsIpeNum a => Path a     -> IpeObject (Path a)
+    UseO          :: IsIpeNum a => Use  a     -> IpeObject (Use a)
+    TextO         ::               TextObject -> IpeObject TextObject
+    ImageO        :: IsIpeNum a => Image a    -> IpeObject (Image a)
+    GroupO        :: IsIpeNum a => Group a t  -> IpeObject (Group a t)
 
-type Attribute a = (Text,a)
+----------------------------------------
+-- | Paths:
+data Path a = Path Style' [Operation a]
+
+type instance V (Path a) = ()
+
+instance HasStyle (Path a) where
+    applyStyle s (Path s' ops) = Path (s <> s') ops
+
+instance Default (Path a) where
+    def = Path mempty mempty
+
+----------------------------------------
+-- | A Use, basically a point
+data Use a = Use Style' (P2 a)
+
+type instance V (Use a) = ()
+
+instance HasStyle (Use a) where
+    applyStyle s (Use s' p) = Use (s <> s') p
+
+-- instance Default (Use a) where
+--     def = Use mempty origin
+
+
+----------------------------------------
+-- | A piece of text
+data TextObject = TextObject Style' Text
+
+----------------------------------------
+-- | An image
+data Image a = ImageRef   Style' (Rect a) Int
+             | ImageEmbed Style' (Rect a) Bitmap
+
+
+data Rect a = Rect a a a a
+
+----------------------------------------
+-- | Groups, collections of ipe objects with potentially transformations and or clipping paths
+data Group a o = Group Style' (ClippingPath a) (IpeObjectList o)
+
+type instance V (Group a o) = ()
+
+instance HasStyle (Group a o) where
+    applyStyle s (Group s' cp obs) = Group (s <> s') cp obs
+
+instance Default (Group a NIL) where
+    def = Group mempty mempty ONil
+
+
+
+type ClippingPath a = [Operation a]
+
+data NIL
+data CONS a b
+
+data IpeObjectList o where
+    ONil  ::                                    IpeObjectList NIL
+    OCons :: IpeObject o -> IpeObjectList os -> IpeObjectList (CONS o os)
+
+
+
+-- oconcat :: IpeObjectList o -> IpeObjectList o' -> IpeObjectList (CONCAT o o')
+-- EmptyObject   `oconcat` o = o
+-- (PathO  p o') `oconcat` o = PathO  p (o' `oconcat` o)
+-- (UseO   u o') `oconcat` o = UseO   u (o' `oconcat` o)
+-- (TextO  t o') `oconcat` o = TextO  t (o' `oconcat` o)
+-- (ImageO i o') `oconcat` o = ImageO i (o' `oconcat` o)
+-- (GroupO g o') `oconcat` o = GroupO g (o' `oconcat` o)
+
+
+
+--------------------------------------------------------------------------------
+-- | Common Attributes
+
+
+
+
+
+
+
 
 newtype Pin = Pin (Maybe PinType)
     deriving (Eq)
@@ -146,19 +319,96 @@ instance Show TransformationType where
     show Translations = "translations"
 
 
-type Matrix = ()
+type Matrix a = a
 
-data CommonAttributes = CA { layer           :: Maybe LayerDefinition
-                           , matrix          :: Maybe Matrix
-                           , pin             :: Maybe Pin
-                           , transformations :: Maybe TransformationType
-                           }
+-- data CommonAttributes = CA { layer           :: Maybe LayerDefinition
+--                            , matrix          :: Maybe Matrix
+--                            , pin             :: Maybe Pin
+--                            , transformations :: Maybe TransformationType
+--                            }
 
 
 
-data Rect a = Rect a a a a
+
+--------------------------------------------------------------------------------
+-- | Path Attributes
+
+
+--                            (Maybe Color)  -- stroke
+--                            (Maybe Color)  -- fill
+--                            (Maybe SymVal) -- dash
+--                            (Maybe SymVal) -- pen
+--                            (Maybe Int) -- line cap
+--                            (Maybe Int) -- line join
+--                            (Maybe SymVal) -- fillrule
+--                            (Maybe Arrow) -- forward arrow
+--                            (Maybe Arrow) -- backward arrow
+--                            (Maybe SymVal) -- opaciity
+--                            (Maybe SymVal) -- tiling
+--                            (Maybe SymVal) -- tiling
+--                            (Maybe SymVal) -- gradient
+
+
+--------------------------------------------------------------------------------
+-- | Use Attributes
+
+
+instance AttributeClass MarkName
+
+
+--               | Use        CommonAttributes
+--                            SymbolName
+--                            (P2 a)         -- pos
+--                            (Maybe Color)  -- stroke
+--                            (Maybe Color)  -- fill
+--                            (Maybe SymVal) -- pen
+--                            (Maybe SymSize) -- size
+
+
+
+
+
+
+
+newtype MarkName = MarkName { markName' :: Last Mark }
+                deriving (Show,Eq,Typeable,Semigroup)
+
+instance Default MarkName where
+    def = MarkName . Last $ def
+
+
+
+
+
+
+data MarkOption = StrokeOption | FillOption | PenOption | SizeOption
+                deriving (Show,Eq,Read,Typeable)
+
+data Mark = Mark Text [MarkOption]
+          deriving (Show,Eq,Typeable)
+
+instance Default Mark where
+    def = Mark "disk" [StrokeOption,SizeOption]
+
+
+
+
+--------------------------------------------------------------------------------
+-- | Text attributes
+
+
+--------------------------------------------------------------------------------
+-- | Image attributes
 
 -- the image element is normally empty. However, it is allowed to omit the bitmap attribute. In this case, the <image> must carry all the attributes of the <bitmap> element, with the exception of id. The element contents is then the bitmap data, as described for <bitmap>.
+
+
+
+
+
+
+
+
 
 type SymbolName = Text
 
@@ -176,43 +426,11 @@ data Arrow = Arrow { arrowName :: SymVal
                    , arrowSize :: ArrowSize
                    }
 
-data Object a = Path       CommonAttributes
-                           (Maybe Color)  -- stroke
-                           (Maybe Color)  -- fill
-                           (Maybe SymVal) -- dash
-                           (Maybe SymVal) -- pen
-                           (Maybe Int) -- line cap
-                           (Maybe Int) -- line join
-                           (Maybe SymVal) -- fillrule
-                           (Maybe Arrow) -- forward arrow
-                           (Maybe Arrow) -- backward arrow
-                           (Maybe SymVal) -- opaciity
-                           (Maybe SymVal) -- tiling
-                           (Maybe SymVal) -- tiling
-                           (Maybe SymVal) -- gradient
-                           [Operation a]
-              | Group      CommonAttributes
-                           [Operation a] -- clip
-                           [Object a]
-              | TextObject CommonAttributes
-                           Text
-              | Use        CommonAttributes
-                           SymbolName
-                           (P2 a)         -- pos
-                           (Maybe Color)  -- stroke
-                           (Maybe Color)  -- fill
-                           (Maybe SymVal) -- pen
-                           (Maybe SymSize) -- size
-              | ImageRef   CommonAttributes
-                           Int Rect
-              | ImageEmbed CommonAttributes
-                           Rect
-                           Bitmap
-                deriving (Eq,Show)
+type Style' = Style ()
 
 
-
-
+--------------------------------------------------------------------------------
+-- | Operations defining a path
 
 
 -- | type that represents a path in ipe.
@@ -227,50 +445,8 @@ data Operation a = MoveTo (P2 a)
                  | ClosePath
                    deriving (Eq, Show)
 
---------------------------------------------------------------------------------------
--- | Stuff with attributes
-
--- class HasAttributes c where
---     attrs      :: c -> AMap
---     updateWith :: (AMap -> AMap) -> c -> c
-
---     getAttr :: String -> c -> Maybe String
---     getAttr s o = M.lookup s . attrs $ o
-
---     setAttr     :: String -> String -> c -> c
---     setAttr k v = updateWith (M.insert k v)
-
---     setAttrs :: [(String,String)] -> c -> c
---     setAttrs ats = updateWith (insertAll ats)
---                    where
---                      insertAll       :: [(String,String)] -> AMap -> AMap
---                      insertAll ats m = foldr (uncurry M.insert) m ats
-
---     hasAttrWithValue          :: String -> String -> c -> Bool
---     hasAttrWithValue at val o = Just val == getAttr at o
-
---     hasAttr   :: String -> c -> Bool
---     hasAttr s = isJust . getAttr s
-
---     extractAttr :: String -> c -> c
---     extractAttr s = updateWith (M.delete s)
-
-
-
-
--- instance HasAttributes (IpeObject a) where
---     attrs (Path _ a)    = a
---     attrs (Group _ a)   = a
---     attrs (IpeText _ a) = a
---     attrs (Use _ a)     = a
-
---     updateWith f (Path ops a)  = Path ops (f a)
---     updateWith f (Group obs a) = Group obs (f a)
---     updateWith f (IpeText s a) = IpeText s (f a)
---     updateWith f (Use p a)     = Use p (f a)
-
-
 --------------------------------------------------------------------------------
+-- | A type specifying the operations required on the numeric type used in ipe files
 
 class (Fractional a, Ord a) => IsIpeNum a where
     showNum :: a -> Text
@@ -285,6 +461,6 @@ instance IsIpeNum Double where
     showNum = T.pack . show
 
 instance IsIpeNum (Ratio Integer) where
-    showNum r = T.pack . show (fromRat r :: Double)
+    showNum r = T.pack . show $ (fromRat r :: Double)
     fromSeq x  Nothing = fromInteger x
     fromSeq x (Just y) = fst . head $ readSigned readFloat (show x ++ "." ++ show y)
