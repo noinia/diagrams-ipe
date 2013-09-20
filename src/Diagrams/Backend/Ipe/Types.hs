@@ -24,6 +24,11 @@ import qualified Data.Text as T
 
 
 
+--------------------------------------------------------------------------------
+-- | The Ipe Element
+
+
+
 
 --------------------------------------------------------------------------------
 
@@ -139,6 +144,8 @@ modified = applyAt Modified
 
 
 
+
+
 --------------------------------------------------------------------------------
 -- | Preamble
 
@@ -243,7 +250,7 @@ instance HasStyle (Use a) where
 
 ----------------------------------------
 -- | A piece of text
-data TextObject = TextObject Style' Text
+data TextObject = TextObject Style' LaTeX
 
 ----------------------------------------
 -- | An image
@@ -251,7 +258,8 @@ data Image a = ImageRef   Style' (Rect a) Int
              | ImageEmbed Style' (Rect a) Bitmap
 
 
-data Rect a = Rect a a a a
+data Rect a = Rect (P2 a) (P2 a)
+            deriving (Show,Eq)
 
 ----------------------------------------
 -- | Groups, collections of ipe objects with potentially transformations and or clipping paths
@@ -367,15 +375,10 @@ transformations = applyAt Transformations
 
 instance AttributeClass MarkName
 
-
---               | Use        CommonAttributes
---                            SymbolName
---                            (P2 a)         -- pos
---                            (Maybe Color)  -- stroke
---                            (Maybe Color)  -- fill
---                            (Maybe SymVal) -- pen
---                            (Maybe SymSize) -- size
-
+-- Line (Stroke) Color
+-- Fill Color
+-- LineWidth (Pen)
+instance AttributeClass SymbolSize
 
 
 
@@ -389,7 +392,12 @@ instance Default MarkName where
     def = MarkName . Last $ def
 
 
+newtype SymbolSize = SymbolSize { symbolSize' :: Last SymVal }
+                   deriving (Show,Eq,Typeable,Semigroup)
 
+
+instance Default SymbolSize where
+    def = SymbolSize . Last $ "normal"
 
 
 
@@ -428,7 +436,6 @@ type SymbolName = Text
 type SymSize = Text
 type SymVal  = Text
 
-type Color = Text
 
 data ArrowSize = ArrowSizeSym  SymVal
                | ArrowSizeReal Double

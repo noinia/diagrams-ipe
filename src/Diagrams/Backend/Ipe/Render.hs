@@ -12,9 +12,13 @@ module Diagrams.Backend.Ipe.Render where
 import Prelude hiding (writeFile)
 
 
+-- import Diagrams.Prelude(Color)
+
 import Diagrams.Core.Style(getAttr, AttributeClass, Style, addAttr )
 import Diagrams.TwoD.Types
 import Diagrams.Backend.Ipe.Types
+
+import Diagrams.Attributes
 
 import Data.Char(toLower)
 import Data.Maybe
@@ -29,6 +33,160 @@ import Text.Hamlet.XML
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as L
+
+
+--------------------------------------------------------------------------------
+-- | Rendering Ipe documents
+
+-- | The doctype for ipe files
+docType :: Doctype
+docType = Doctype "ipe" $ Just (SystemID "ipe")
+
+
+ipeDocument ipe = Document prologue ipe []
+    where
+      prologue = Prologue [] (Just docType) []
+
+
+
+-- ipeElem mInfo mPreamble bitmaps styles pages = Element (M.fromList [ ("version","70005")
+--                                                                    , ("creator","diagrams-ipe")
+--                                                                    ])
+--                                                        (map NodeContent chs)
+--     where
+--       chs = (catMaybes [mInfo,mPreamble]) <> bitmaps <> styles <> pages
+
+
+
+info          :: Info -> Element
+info (Info s) = Element "info" atts []
+         where
+           a    :: forall a. AttributeClass a => Maybe a
+           a    = getAttr s
+           atts = attributes [ attr (a :: Maybe Title)
+                             , attr (a :: Maybe Author)
+                             , attr (a :: Maybe Subject)
+--                             , attr (a :: Maybe Keywords)
+                             , attr (a :: Maybe PageMode)
+                             , attr (a :: Maybe Created)
+                             , attr (a :: Maybe Modified)
+                             , attr (a :: Maybe NumberPages)
+                             ]
+
+--------------------------------------------------------------------------------
+-- | Preamble
+
+preamble                :: Preamble -> Element
+preamble (Preamble me l) = Element "preamble" atts [NodeContent l]
+    where
+      atts = maybe mempty (M.singleton "encoding") me
+
+-- bitmap                                                              :: Bitmap -> Element
+-- bitmap (Bitmap id width height cs filterOrLength mEncoding imgData) =
+--     Element atts [NodeContent imgData]
+--         where
+--           bitsPerComponent = 8
+--           colorKey         = undefined -- TODO: only if colorspace is DeviceRGB
+--           atts = [] -- TODO
+
+
+
+--------------------------------------------------------------------------------
+-- | Styles
+
+
+
+
+--------------------------------------------------------------------------------
+-- | Pages
+
+
+
+
+
+--------------------------------------------------------------------------------
+-- | Ipe Objects
+
+
+path              :: IsIpeNum a => Path a -> Element
+path (Path s ops) = Element "path" atts [NodeContent $ opsText ops]
+    where
+      a    :: forall a. AttributeClass a => Maybe a
+      a    = getAttr s
+      atts = commonAttributes s <> attributes [ attr (a :: Maybe LineColor)
+                                              , attr (a :: Maybe FillColor)
+                                              , attr (a :: Maybe LineWidth)
+                                              , attr (a :: Maybe DashingA)
+
+                                              -- , attr (a :: Maybe LineCap)
+                                              -- , attr (a :: Maybe LineJoin)
+
+                                              -- , attr (a :: Maybe FillRule)
+
+                                              -- , attr (a :: Maybe ArrowA)
+                                              -- , attr (a :: Maybe RArrowA)
+                                              , attr (a :: Maybe Opacity)
+                                              -- , attr (a :: Maybe Tiling)
+                                              -- , attr (a :: Maybe Gradient)
+
+                                              ]
+
+use            :: IsIpeNum a => Use a -> Element
+use (Use s' p) = Element "use" atts []
+    where
+      -- if the name of the symbol has not been set yet, set it
+      s    = addAttr (def :: MarkName) s'
+
+      a    :: forall a. AttributeClass a => Maybe a
+      a    = getAttr s
+      atts =    commonAttributes s
+             <> M.fromList [("pos",toStrictText p)]
+             <> attributes [ attr (a :: Maybe MarkName)
+                           , attr (a :: Maybe LineColor)
+                           , attr (a :: Maybe FillColor)
+                           , attr (a :: Maybe LineWidth)
+                           , attr (a :: Maybe SymbolSize)
+                           ]
+
+text                 :: TextObject -> Element
+text (TextObject s l)= Element "text" atts [NodeContent l]
+    where
+      a    :: forall a. AttributeClass a => Maybe a
+      a    = getAttr s
+      atts = commonAttributes s <>
+             attributes [ attr (a :: Maybe LineColor)
+                        -- TODO: The other stuff
+                        ]
+
+image                     :: IsIpeNum a => Image a -> Element
+image (ImageRef   s r i)  = let bmi = M.singleton "bitmap" (showT i) in
+                            Element "image" (rect r <> bmi)            []
+image (ImageEmbed s r bm) = Element "image" (rect r <> bitmapAttrs bm) [NodeContent . imageData $ bm]
+
+
+group                  :: IsIpeNum a => Group a o -> Element
+group (Group s cp obs) = Element "group" atts (ipeObjectList obs)
+    where
+      -- a                :: forall a. AttributeClass a => Maybe a
+      -- a                = getAttr s
+      atts             = commonAttributes s <> clippingPathAttr
+      clippingPathAttr = case cp of
+                           [] -> mempty
+                           _  -> M.singleton "clip" $ opsText cp
+
+
+ipeObject            :: forall o. IpeObject o -> Element
+ipeObject (PathO  p) = path  p
+ipeObject (UseO   u) = use   u
+ipeObject (TextO  t) = text  t
+ipeObject (ImageO i) = image i
+ipeObject (GroupO g) = group g
+
+
+ipeObjectList              :: forall o. IpeObjectList o -> [Node]
+ipeObjectList ONil         = []
+ipeObjectList (OCons o os) = (NodeElement . ipeObject $ o) : ipeObjectList os
+
 
 
 --------------------------------------------------------------------------------
@@ -68,48 +226,7 @@ showT :: Show a => a -> Text
 showT = T.pack . show
 
 --------------------------------------------------------------------------------
--- | Rendering Ipe documents
-
-
--- | The doctype for ipe files
-docType :: Doctype
-docType = Doctype "ipe" $ Just (SystemID "ipe")
-
-
-
-ipeDocument ipe = Document prologue ipe []
-    where
-      prologue = Prologue [] (Just docType) []
-
-
-
-
-
--- ipeElem mInfo mPreamble bitmaps styles pages = Element (M.fromList [ ("version","70005")
---                                                                    , ("creator","diagrams-ipe")
---                                                                    ])
---                                                        (map NodeContent chs)
---     where
---       chs = (catMaybes [mInfo,mPreamble]) <> bitmaps <> styles <> pages
-
-
-
-info          :: Info -> Element
-info (Info s) = Element "info" atts []
-         where
-           a    :: forall a. AttributeClass a => Maybe a
-           a    = getAttr s
-           atts = attributes [ attr (a :: Maybe Title)
-                             , attr (a :: Maybe Author)
-                             , attr (a :: Maybe Subject)
---                             , attr (a :: Maybe Keywords)
-                             , attr (a :: Maybe PageMode)
-                             , attr (a :: Maybe Created)
-                             , attr (a :: Maybe Modified)
-                             , attr (a :: Maybe NumberPages)
-                             ]
-
-
+-- | Info Attributes
 
 instance ToAttribute Title where
     atName = const "title"
@@ -142,166 +259,10 @@ instance ToAttribute Modified where
     atVal  = showT . getLast . modified'
 
 
-
-
-
-
-
-
-
--- preamble                :: Preamble -> Element
--- preamble (Preamble e l) = Element (attributes enc) [NodeContent l]
---     where
---       enc = maybeToList . fmap (\e -> ("encoding",e)) $ e
-
-
--- bitmap                                                              :: Bitmap -> Element
--- bitmap (Bitmap id width height cs filterOrLength mEncoding imgData) =
---     Element atts [NodeContent imgData]
---         where
---           bitsPerComponent = 8
---           colorKey         = undefined -- TODO: only if colorspace is DeviceRGB
---           atts = [] -- TODO
-
-
-
--- use :: IsIpeNum a => IpeObject a -> Element
--- use (Use common name pos mStroke mFill mPen mSize) = Element ats []
---     where
---       ats      = ("name",name) : ("pos", showP pos) : withCommon common <> specific
---       specific = attributes [ withN "stroke" mStroke
---                             , withN "fill"   mFill
---                             , withN "pen"    mPen
---                             , withN "size"   mSize
---                             ]
--- use _ = error |"works only for use"
-
--- showP = undefined -- TODO
-
-
--- path :: IseIpeNum a => IpeObject a -> Element
--- path (Path common mStroke mFill mDash mPen mCap mJoin mFRule mArr mRArr mOpacity mTiling mGradient ops) =
---     Element ats [NodeContent opsT]
---         where
---           ats      = withCommon common <> specific
---           specific = attributes [ withN "stroke"                mStroke
---                                 , withN "fill"                  mFill
---                                 , withN "dash"                  mDash
---                                 , withN "pen"                   mPen
---                                 , withN "cap"         . showT $ mCap
---                                 , withN "join"        . showT $ mJoin
---                                 , withN "fillrule"              mFRule
---                                 , withN "arrow"       . showT $ mArr
---                                 , withN "rarrow"      . showT $ mRArr
---                                 , withN "opacity"               mOpacity
---                                 , withN "tiling"                mTiling
---                                 , withN "gradient"              mGradient
---                                 ]
-
-
-
--- withCommon (CA mLayer mMatrix mPin mTrans) = attributes [ withN "layer"                     mLayer
---                                                         , withN "matrix"          . showT $ mMatrix
---                                                         , withN "pin"             . showT $ mPin
---                                                         , withN "transformations" . showT $ mTrans
---                                                         ]
-
-
-
-
-
-
-
-
-
-
-
-
--- -- stroke
--- --     (optional) The stroke color. If the attribute is missing, the shape will not be stroked.
--- -- fill
--- --     (optional) The fill color. If the attribute is missing, the shape will not be filled.
--- -- dash
--- --     (optional) Either a symbolic name defined in a style sheet, or a dash pattern in PDF format, such as "[3 1] 0" for "three pixels on, one off, starting with the first pixel". If the attribute is missing, a solid line is drawn.
--- -- pen
--- --     (optional) The line width, either symbolic (defined in a style sheet), or as a single real number. The default value is "normal".
--- -- cap
--- --     (optional) The line cap setting of PDF as an integer. If the argument is missing, the setting from the style sheet is used.
--- -- join
--- --     (optional) The line join setting of PDF as an integer. If the argument is missing, the setting from the style sheet is used.
--- -- fillrule
--- --     (optional) Possible values are wind and eofill, selecting one of two algorithms for determining whether a point lies inside a filled object. If the argument is missing, the setting from the style sheet is used.
--- -- arrow
--- --     (optional) The value consists of a symbolic name, say "triangle" for an arrow type (a symbol with name "arrow/triangle(spx)"), followed by a slash and the size of the arrow. The size is either a symbolic name (of type "arrowsize") defined in a style sheet, or a real number. If the attribute is missing, no arrow is drawn.
--- -- rarrow
--- --     (optional) Same for an arrow in the reverse direction (at the beginning of the first subpath).
--- -- opacity
--- --     (optional) Opacity of the element. This must be a symbolic name. The default is 1.0, meaning fully opaque.
--- -- tiling
--- --     (optional) A tiling pattern to be used to fill the element. The default is not to tile the element. If the element is not filled, then the tiling pattern is ignored.
--- -- gradient
--- --     (optional) A gradient pattern to be used to fill the element. If the element is not filled, then the gradient pattern is ignored. (The fill color is only used for rendering where gradients are not available, for instance currently in Postscript.) If gradient is set, then tiling is ignored.
-
-
-
-
-path              :: IsIpeNum a => Path a -> Element
-path (Path s ops) = Element "path" atts [NodeContent $ opsText ops]
-    where
-      a    :: forall a. AttributeClass a => Maybe a
-      a    = getAttr s
-      atts = commonAttributes s <> attributes [ -- TODO
-                                              ]
-
-use :: IsIpeNum a => Use a -> Element
-use (Use s' p) = Element "use" atts []
-    where
-      -- if the name of the symbol has not been set yet, set it
-      s    = addAttr (def :: MarkName) s'
-
-      a    :: forall a. AttributeClass a => Maybe a
-      a    = getAttr s
-      atts =    commonAttributes s
-             <> M.fromList [("pos",toStrictText p)]
-             <> attributes [ -- TODO
-                           ]
-
-text :: TextObject -> Element
-text = undefined
-
-
-image :: IsIpeNum a => Image a -> Element
-image = undefined
-
-
-group                  :: IsIpeNum a => Group a o -> Element
-group (Group s cp obs) = Element "group" atts (ipeObjectList obs)
-    where
-      -- a                :: forall a. AttributeClass a => Maybe a
-      -- a                = getAttr s
-      atts             = commonAttributes s <> clippingPathAttr
-      clippingPathAttr = case cp of
-                           [] -> mempty
-                           _  -> M.fromList [("clip", opsText cp)]
-
-
-ipeObject            :: forall o. IpeObject o -> Element
-ipeObject (PathO  p) = path  p
-ipeObject (UseO   u) = use   u
-ipeObject (TextO  t) = text  t
-ipeObject (ImageO i) = image i
-ipeObject (GroupO g) = group g
-
-
-ipeObjectList              :: forall o. IpeObjectList o -> [Node]
-ipeObjectList ONil         = []
-ipeObjectList (OCons o os) = (NodeElement . ipeObject $ o) : ipeObjectList os
-
-
-
-
 --------------------------------------------------------------------------------
+-- | Common Attributes (for IpeObjects)
 
+-- | The attributes valid in *all* ipeObjects
 commonAttributes   :: Style v -> AttrMap
 commonAttributes s = attributes [ attr (a :: Maybe Layer)
                                 , attr (a :: Maybe Pin)
@@ -330,7 +291,63 @@ instance ToAttribute Transformations  where
     atName = const "transformations"
     atVal  = T.toLower . showT . getLast . transformations'
 
+
+----------------------------------------
+-- | Attributes not valid in all, but several types of ipeObjects
+
+instance ToAttribute LineColor where
+    atName  = const "stroke"
+    atVal   = colorVal . getLineColor
+
+instance ToAttribute FillColor where
+    atName  = const "fill"
+    atVal   = colorVal . getFillColor
+
+instance ToAttribute LineWidth where
+    atName  = const "pen"
+    atVal   = showT . getLineWidth
+
+
 --------------------------------------------------------------------------------
+-- | Path Attributes
+
+
+instance ToAttribute Opacity where
+    atName  = const "opacity"
+    atVal   = opacityVal . getOpacity
+
+instance ToAttribute DashingA where
+    atName  = const "dash"
+    atVal v = case getDashing v of
+                Dashing _ _ -> "TODO"
+
+-- -- dash
+-- --     (optional) Either a symbolic name defined in a style sheet, or a dash pattern in PDF format, such as "[3 1] 0" for "three pixels on, one off, starting with the first pixel". If the attribute is missing, a solid line is drawn.
+
+
+
+-- -- cap
+-- --     (optional) The line cap setting of PDF as an integer. If the argument is missing, the setting from the style sheet is used.
+-- -- join
+-- --     (optional) The line join setting of PDF as an integer. If the argument is missing, the setting from the style sheet is used.
+-- -- fillrule
+-- --     (optional) Possible values are wind and eofill, selecting one of two algorithms for determining whether a point lies inside a filled object. If the argument is missing, the setting from the style sheet is used.
+-- -- arrow
+-- --     (optional) The value consists of a symbolic name, say "triangle" for an arrow type (a symbol with name "arrow/triangle(spx)"), followed by a slash and the size of the arrow. The size is either a symbolic name (of type "arrowsize") defined in a style sheet, or a real number. If the attribute is missing, no arrow is drawn.
+-- -- rarrow
+-- --     (optional) Same for an arrow in the reverse direction (at the beginning of the first subpath).
+-- -- opacity
+-- --     (optional) Opacity of the element. This must be a symbolic name. The default is 1.0, meaning fully opaque.
+-- -- tiling
+-- --     (optional) A tiling pattern to be used to fill the element. The default is not to tile the element. If the element is not filled, then the tiling pattern is ignored.
+-- -- gradient
+-- --     (optional) A gradient pattern to be used to fill the element. If the element is not filled, then the gradient pattern is ignored. (The fill color is only used for rendering where gradients are not available, for instance currently in Postscript.) If gradient is set, then tiling is ignored.
+
+
+
+
+--------------------------------------------------------------------------------
+-- | Use Attributes
 
 instance ToAttribute MarkName where
     atName  = const "name"
@@ -339,6 +356,51 @@ instance ToAttribute MarkName where
         where
           toT :: MarkOption -> Char
           toT = toLower . head . show
+
+
+instance ToAttribute SymbolSize where
+    atName  = const "size"
+    atVal   = showT . getLast . symbolSize'
+
+
+--------------------------------------------------------------------------------
+-- | Text Attributes
+
+-- type
+--     (required) Possible values are label and minipage.
+-- stroke
+--     (optional) The stroke color. If the attribute is missing, black will be used.
+-- size
+--     (optional) The font size—either a symbolic name defined in a style sheet, or a real number. The default is "normal".
+-- pos
+--     (required) Two real numbers separated by white space, defining the position of the text on the paper.
+-- width
+--     (required for minipage objects, optional for label objects) The width of the object in points.
+-- height
+--     (optional) The total height of the object in points.
+-- depth
+--     (optional) The depth of the object in points.
+-- valign
+--     (optional) Possible values are top (default for a minipage object), bottom (default for a label object), center, and baseline.
+-- halign
+--     (optional, label only) Possible values are left, right, and center. left is the default. This determines the position of the reference point with respect to the text box.
+-- style
+--     (optional, minipage only) Selects a LaTeX "style" to be used for formatting the text, and must be a symbolic name defined in a style sheet. The standard style sheet defines the styles "normal", "center", "itemize", and "item". If the attribute is not present, the "normal" style is applied.
+-- opacity
+--     (optional) Opacity of the element. This must be a symbolic name. The default is 1.0, meaning fully opaque.
+
+
+--------------------------------------------------------------------------------
+-- | Image/Bitmap Attributes
+
+
+bitmapAttrs = undefined
+
+
+rect :: IsIpeNum a => Rect a -> M.Map Name Text
+rect = M.singleton "rect" . toStrictText
+
+
 
 --------------------------------------------------------------------------------
 
@@ -375,6 +437,10 @@ instance IsIpeNum a => IsIpeWriteable (P2 a) where
     type IpeNum (P2 a) = a
     toText (unp2 -> (x,y)) = format "{} {}" $ map showNum [x,y]
 
+instance IsIpeNum a => IsIpeWriteable (Rect a) where
+    type IpeNum (Rect a) = a
+    toText (Rect p1 p2) = format "{} {}" $ map toText [p1,p2]
+
 instance IsIpeNum a => IsIpeWriteable (Operation a) where
     type IpeNum (Operation a) = a
 
@@ -388,9 +454,35 @@ instance IsIpeNum a => IsIpeWriteable (Operation a) where
     toText (ClosedSpline pts) = format "{} u"       $ Only $ pts `textSepBy` " "
     toText ClosePath          = "h"
 
+
 opsText     :: IsIpeNum a => [Operation a] -> Text
 opsText ops = toStrictT $ (ops `textSepBy` "\n") `L.append` "\n"
 
 
 toStrictT :: L.Text -> T.Text
 toStrictT = mconcat . L.toChunks
+
+
+--------------------------------------------------------------------------------
+-- | Stuff with colors
+
+colorVal :: forall c. Color c => c -> Text
+colorVal = colorToRgbString
+
+
+colorToRgbString :: forall c . Color c => c -> Text
+colorToRgbString c = mconcat [ int r, " "
+                             , int g, " "
+                             , int b
+                             ]
+    where int d     = showT (round (d * 255) :: Int)
+          (r,g,b,_) = colorToSRGBA c
+
+
+opacityVal :: Double -> Text
+opacityVal = const "1.0" -- TODO: this must be a symbolic name in Ipe
+
+
+colorToOpacity :: forall c . Color c => c -> Double
+colorToOpacity c = a
+    where (_,_,_,a) = colorToSRGBA c
