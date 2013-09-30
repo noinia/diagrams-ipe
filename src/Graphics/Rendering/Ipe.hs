@@ -7,7 +7,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
-module Diagrams.Backend.Ipe.Render where
+module Graphics.Rendering.Ipe where
 
 import Prelude hiding (writeFile)
 
