@@ -27,7 +27,15 @@ import qualified Data.Text as T
 --------------------------------------------------------------------------------
 -- | The Ipe Element
 
+data IpeDocument = IpeDocument { info     :: Maybe Info
+                               , preamble :: Maybe Preamble
+                               , styles   :: [IpeStyle]
+                               , bitmaps  :: [Bitmap]
+                               , pages    :: [Page]
+                               }
 
+instance Default IpeDocument where
+    def = IpeDocument Nothing Nothing [] [] []
 
 
 --------------------------------------------------------------------------------
@@ -142,8 +150,11 @@ modified = applyAt Modified
 --------------------------------------------------------------------------------
 -- | IpeStyle
 
+data IpeStyle = IpeStyle
+              deriving (Show,Eq)
 
 
+-- TODO: Make this a more useful data type
 
 
 --------------------------------------------------------------------------------
@@ -166,17 +177,25 @@ data ColorSpace = DeviceGray | DeviceRGB (Maybe ColorKey) | DeviceCMYK
                 deriving (Show,Eq)
 
 
+colorKey                :: ColorSpace -> Maybe ColorKey
+colorKey (DeviceRGB mc) = mc
+colorKey _              = Nothing
+
 
 data BMEncoding = Base64 | Hex
-                deriving (Eq)
+                deriving (Eq,Show)
 
 
-data Filter = FlateDecode | DCTDecode
-            deriving (Show,Eq)
+instance Default BMEncoding where
+    def = Hex
 
-data FilterOrLength = Length Int
-                    | Filter Filter
-                      deriving (Eq)
+
+data FilterType = FlateDecode | DCTDecode
+                  deriving (Show,Eq)
+
+-- | The filter type and the length of the image data
+data Filter = Filter FilterType Int
+              deriving (Eq)
 
 type ImageData = Text
 
@@ -186,8 +205,8 @@ data Bitmap = Bitmap { identifier     :: Int
                      , width          :: Int
                      , height         :: Int
                      , colorspace     :: ColorSpace
-                     , filterOrLength :: FilterOrLength
-                     , bitmapEncoding :: Maybe BMEncoding
+                     , filter         :: Maybe Filter
+                     , bitmapEncoding :: BMEncoding
                      , imageData      :: ImageData
                      }
 
@@ -200,18 +219,34 @@ data Bitmap = Bitmap { identifier     :: Int
 
 
 -- | Represents the <page> tag
--- data Page a = Page [LayerDefinition] [ViewDefinition] [Object a]
---               deriving (Eq, Show)
+data Page where
+    Page :: [LayerDefinition] -> [ViewDefinition] -> Maybe Notes -> IpeObjectList o -> Page
 
 
-type LayerDefinition = Text
+instance Default Page where
+    def = Page [] [] Nothing ONil
+
+
+
+type Notes = Text
+
+-- TODO: pages may have titles and subtitles
+
+
+
+type LayerName       = Text
+type LayerDefinition = LayerName
 
 -- | The definition of a view
 -- make active layer into an index ?
-data ViewDefinition = ViewDefinition { layerNames      :: [Text]
-                                     , activeLayer     :: Text
+data ViewDefinition = ViewDefinition { layerNames      :: [LayerName]
+                                     , activeLayer     :: LayerName
                                      }
                       deriving (Eq, Show)
+
+instance Default ViewDefinition where
+    def = ViewDefinition ["alpha"] "alpha"
+
 
 --------------------------------------------------------------------------------
 -- | An ipe-object. The main ``thing'' that defines the drawings
@@ -283,17 +318,6 @@ data CONS a b
 data IpeObjectList o where
     ONil  ::                                    IpeObjectList NIL
     OCons :: IpeObject o -> IpeObjectList os -> IpeObjectList (CONS o os)
-
-
-
--- oconcat :: IpeObjectList o -> IpeObjectList o' -> IpeObjectList (CONCAT o o')
--- EmptyObject   `oconcat` o = o
--- (PathO  p o') `oconcat` o = PathO  p (o' `oconcat` o)
--- (UseO   u o') `oconcat` o = UseO   u (o' `oconcat` o)
--- (TextO  t o') `oconcat` o = TextO  t (o' `oconcat` o)
--- (ImageO i o') `oconcat` o = ImageO i (o' `oconcat` o)
--- (GroupO g o') `oconcat` o = GroupO g (o' `oconcat` o)
-
 
 
 --------------------------------------------------------------------------------

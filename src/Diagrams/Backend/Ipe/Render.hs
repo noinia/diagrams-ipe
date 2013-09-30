@@ -11,12 +11,15 @@ module Diagrams.Backend.Ipe.Render where
 
 import Prelude hiding (writeFile)
 
+import Control.Applicative((<$>))
 
 -- import Diagrams.Prelude(Color)
 
 import Diagrams.Core.Style(getAttr, AttributeClass, Style, addAttr )
 import Diagrams.TwoD.Types
-import Diagrams.Backend.Ipe.Types
+
+import Diagrams.Backend.Ipe.Types hiding (info, preamble)
+
 
 import Diagrams.Attributes
 
@@ -43,18 +46,22 @@ docType :: Doctype
 docType = Doctype "ipe" $ Just (SystemID "ipe")
 
 
-ipeDocument ipe = Document prologue ipe []
+ipeDocument i = Document prologue (ipeElem i) []
     where
       prologue = Prologue [] (Just docType) []
 
 
-
--- ipeElem mInfo mPreamble bitmaps styles pages = Element (M.fromList [ ("version","70005")
---                                                                    , ("creator","diagrams-ipe")
---                                                                    ])
---                                                        (map NodeContent chs)
---     where
---       chs = (catMaybes [mInfo,mPreamble]) <> bitmaps <> styles <> pages
+ipeElem (IpeDocument mi mp ss bs ps) = Element "ipe" atts $ map NodeElement chs
+    where
+      atts = M.fromList [ ("version","70005")
+                        , ("creator","diagrams-ipe")
+                        ]
+      chs  =    catMaybes [ fmap info     mi
+                          , fmap preamble mp
+                          ]
+             <> map ipeStyle ss
+             <> map bitmap   bs
+             <> map page     ps
 
 
 
@@ -81,26 +88,70 @@ preamble (Preamble me l) = Element "preamble" atts [NodeContent l]
     where
       atts = maybe mempty (M.singleton "encoding") me
 
--- bitmap                                                              :: Bitmap -> Element
--- bitmap (Bitmap id width height cs filterOrLength mEncoding imgData) =
---     Element atts [NodeContent imgData]
---         where
---           bitsPerComponent = 8
---           colorKey         = undefined -- TODO: only if colorspace is DeviceRGB
---           atts = [] -- TODO
 
+bitmap                                   :: Bitmap -> Element
+bitmap (Bitmap i w h cs mFilt enc iData) = Element "bitmap" atts [NodeContent iData]
+        where
+          bitsPerComponent = 8
+          fAtts            = maybe [] (\(Filter ft l) ->
+                                          [ ("length",           showT l)
+                                          , ("filter",           showT ft)
+                                          ])
+                             mFilt
+          colKey           = (\(RGB k) ->   ("ColorKey",         showT k))
+                             <$> colorKey cs
+          encAtt           = if enc == Base64 then Just
+                                            ("encoding" ,        "base64")
+                             else Nothing
+          atts             = M.fromList $ [ ("id",               showT i)
+                                          , ("width",            showT w)
+                                          , ("height",           showT h)
+                                          , ("ColorSpace",       showCS cs)
+                                          , ("BitsPerComponent", showT  bitsPerComponent)
+                                          ] <> fAtts <> catMaybes [colKey, encAtt]
+          showCS = T.pack . head . words . show
 
 
 --------------------------------------------------------------------------------
 -- | Styles
 
 
+ipeStyle   :: IpeStyle -> Element
+ipeStyle _ = Element "style" mempty mempty -- TODO
 
 
 --------------------------------------------------------------------------------
 -- | Pages
 
 
+page                       :: Page -> Element
+page (Page lds vds mn obs) = Element "page" atts chs
+    where
+      atts = mempty -- TODO
+      chs' =    maybeToList (fmap notes mn)
+             <> map layerDefinition lds
+             <> map viewDefinition  vds
+      chs  =    map NodeElement chs'
+             <> ipeObjectList obs
+
+
+notes   :: Notes -> Element
+notes t =  Element "notes" mempty [NodeContent t]
+
+
+layerDefinition       :: LayerDefinition -> Element
+layerDefinition lName = Element "layer" atts []
+    where
+      atts = M.singleton "layer" lName
+             -- TODO: optional attr: edit, whether or not the layer can be edited in ipe
+
+viewDefinition                        :: ViewDefinition -> Element
+viewDefinition (ViewDefinition lrs a) = Element "view" atts []
+    where
+      atts = M.fromList [ ("layers", T.unwords lrs)
+                        , ("active", a)
+                        ]
+             -- TODO: Effect, marked
 
 
 
