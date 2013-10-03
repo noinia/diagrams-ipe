@@ -4,13 +4,16 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RankNTypes #-}
 module Diagrams.Backend.Ipe.Types where
 
 import Numeric
 
+
 import Diagrams.TwoD.Types
 import Diagrams.Core.Style
 import Diagrams.Core.V
+import Diagrams.Transform
 
 
 import Data.Default
@@ -35,7 +38,11 @@ data IpeDocument = IpeDocument { info     :: Maybe Info
                                }
 
 instance Default IpeDocument where
-    def = IpeDocument Nothing Nothing [] [] []
+    def = IpeDocument Nothing Nothing [] [] [def]
+
+
+singlePageDocument :: IpeObjectList -> IpeDocument
+singlePageDocument = fromIpeObjects
 
 
 --------------------------------------------------------------------------------
@@ -219,12 +226,17 @@ data Bitmap = Bitmap { identifier     :: Int
 
 
 -- | Represents the <page> tag
-data Page where
-    Page :: [LayerDefinition] -> [ViewDefinition] -> Maybe Notes -> IpeObjectList o -> Page
+data Page = Page [LayerDefinition] [ViewDefinition] (Maybe Notes) IpeObjectList
 
 
 instance Default Page where
-    def = Page [] [] Nothing ONil
+    def = fromIpeObjects mempty
+
+
+
+instance FromIpeObjects Page where
+    fromIpeObjects = Page [] [] Nothing
+
 
 
 
@@ -252,29 +264,40 @@ instance Default ViewDefinition where
 -- | An ipe-object. The main ``thing'' that defines the drawings
 
 data IpeObject o where
-    PathO         :: IsIpeNum a => Path a     -> IpeObject (Path a)
-    UseO          :: IsIpeNum a => Use  a     -> IpeObject (Use a)
-    TextO         ::               TextObject -> IpeObject TextObject
-    ImageO        :: IsIpeNum a => Image a    -> IpeObject (Image a)
-    GroupO        :: IsIpeNum a => Group a t  -> IpeObject (Group a t)
+    PathO         :: IsIpeNum a => Path a       -> IpeObject (Path a)
+    UseO          :: IsIpeNum a => Use  a       -> IpeObject (Use a)
+    TextO         :: IsIpeNum a => TextObject a -> IpeObject (TextObject a)
+    ImageO        :: IsIpeNum a => Image a      -> IpeObject (Image a)
+    GroupO        :: IsIpeNum a => Group a      -> IpeObject (Group a)
+
+type instance V (IpeObject (Path a)) = V2 a
+type instance V (IpeObject (Use a)) = V2 a
+type instance V (IpeObject (TextObject a)) = V2 a
+type instance V (IpeObject (Image a)) = V2 a
+type instance V (IpeObject (Group a)) = V2 a
+
 
 ----------------------------------------
 -- | Paths:
-data Path a = Path Style' [Operation a]
+data Path a = Path (StyleV2 a) [Operation a]
 
-type instance V (Path a) = ()
+type instance V (Path a) = V2 a
 
 instance HasStyle (Path a) where
     applyStyle s (Path s' ops) = Path (s <> s') ops
 
 instance Default (Path a) where
-    def = Path mempty mempty
+    def = mempty
+
+instance Monoid (Path a) where
+    mempty = Path mempty mempty
+    (Path s os) `mappend` (Path s' os') = Path (s `mappend` s') (os `mappend` os')
 
 ----------------------------------------
 -- | A Use, basically a point
-data Use a = Use Style' (P2 a)
+data Use a = Use (StyleV2 a) (P2 a)
 
-type instance V (Use a) = ()
+type instance V (Use a) = V2 a
 
 instance HasStyle (Use a) where
     applyStyle s (Use s' p) = Use (s <> s') p
@@ -285,12 +308,12 @@ instance HasStyle (Use a) where
 
 ----------------------------------------
 -- | A piece of text
-data TextObject = TextObject Style' LaTeX
+data TextObject a = TextObject (StyleV2 a) LaTeX
 
 ----------------------------------------
 -- | An image
-data Image a = ImageRef   Style' (Rect a) Int
-             | ImageEmbed Style' (Rect a) Bitmap
+data Image a = ImageRef   (StyleV2 a) (Rect a) Int
+             | ImageEmbed (StyleV2 a) (Rect a) Bitmap
 
 
 data Rect a = Rect (P2 a) (P2 a)
@@ -298,26 +321,61 @@ data Rect a = Rect (P2 a) (P2 a)
 
 ----------------------------------------
 -- | Groups, collections of ipe objects with potentially transformations and or clipping paths
-data Group a o = Group Style' (ClippingPath a) (IpeObjectList o)
+data Group a = Group (StyleV2 a) (ClippingPath a) IpeObjectList
 
-type instance V (Group a o) = ()
+type instance V (Group a) = V2 a
 
-instance HasStyle (Group a o) where
+instance HasStyle (Group a) where
     applyStyle s (Group s' cp obs) = Group (s <> s') cp obs
 
-instance Default (Group a NIL) where
-    def = Group mempty mempty ONil
-
+instance Default (Group a) where
+    def = Group mempty mempty mempty
 
 
 type ClippingPath a = [Operation a]
 
-data NIL
-data CONS a b
 
-data IpeObjectList o where
-    ONil  ::                                    IpeObjectList NIL
-    OCons :: IpeObject o -> IpeObjectList os -> IpeObjectList (CONS o os)
+
+data IpeObjectList where
+    ONil  ::                                 IpeObjectList
+    OCons :: IpeObject o -> IpeObjectList -> IpeObjectList
+
+instance Monoid IpeObjectList where
+    mempty = ONil
+    ONil          `mappend` ol = ol
+    (OCons o ol') `mappend` ol = OCons o $ ol' `mappend` ol
+
+
+singleton :: IpeObject o -> IpeObjectList
+singleton = flip OCons ONil
+
+omap :: (forall a. IpeObject a -> IpeObject a) -> IpeObjectList -> IpeObjectList
+omap f ONil         = ONil
+omap f (OCons o ol) = OCons (f o) $ omap f ol
+
+
+
+--------------------------------------------------------------------------------
+-- | Easy ways of constructing certain Ipe data types from IpeObjects
+
+class FromIpeObjects c where
+    fromIpeObjects :: IpeObjectList -> c
+
+    fromIpeObject :: IpeObject o -> c
+    fromIpeObject = fromIpeObjects . singleton
+
+instance FromIpeObjects IpeDocument where
+    fromIpeObjects obs = def { pages = [fromIpeObjects obs] }
+
+
+
+
+
+
+
+
+
+
 
 
 --------------------------------------------------------------------------------
@@ -371,6 +429,9 @@ pin = applyAt Pin
 
 transformations :: HasStyle a => TransformationType -> a -> a
 transformations = applyAt Transformations
+
+
+
 
 
 
@@ -471,6 +532,7 @@ data Arrow = Arrow { arrowName :: SymVal
 
 type Style' = Style ()
 
+type StyleV2 a = Style (V2 a)
 
 --------------------------------------------------------------------------------
 -- | Operations defining a path
@@ -487,6 +549,21 @@ data Operation a = MoveTo (P2 a)
                  | ClosedSpline [P2 a]
                  | ClosePath
                    deriving (Eq, Show)
+
+type instance V (Operation a) = V2 a
+
+instance Num a => Transformable (Operation a) where
+    transform t (MoveTo p)        = MoveTo $ transform t p
+    transform t (LineTo p)        = LineTo $ transform t p
+    transform t (CurveTo p q r)   = CurveTo  (transform t p) (transform t q) (transform t r)
+    transform t (QCurveTo p q)    = QCurveTo (transform t p) (transform t q)
+    transform t (ArcTo m p)       = error "transform: not implemented" -- ArcTo m  (transform t p) -- FIXME: Implement this!
+    transform t (Ellipse m)       = error "transform: not implemented" -- Ellipse m                -- FIXME Implement this
+    transform t (Spline ps)       = Spline       $ map (transform t) ps
+    transform t (ClosedSpline ps) = ClosedSpline $ map (transform t) ps
+    transform t ClosePath         = ClosePath
+
+
 
 --------------------------------------------------------------------------------
 -- | A type specifying the operations required on the numeric type used in ipe files

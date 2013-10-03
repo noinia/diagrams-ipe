@@ -199,7 +199,7 @@ use (Use s' p) = Element "use" atts []
                            , attr (a :: Maybe SymbolSize)
                            ]
 
-text                 :: TextObject -> Element
+text                 :: TextObject a -> Element
 text (TextObject s l)= Element "text" atts [NodeContent l]
     where
       a    :: forall a. AttributeClass a => Maybe a
@@ -215,7 +215,7 @@ image (ImageRef   s r i)  = let bmi = M.singleton "bitmap" (showT i) in
 image (ImageEmbed s r bm) = Element "image" (rect r <> bitmapAttrs bm) [NodeContent . imageData $ bm]
 
 
-group                  :: IsIpeNum a => Group a o -> Element
+group                  :: IsIpeNum a => Group a -> Element
 group (Group s cp obs) = Element "group" atts (ipeObjectList obs)
     where
       -- a                :: forall a. AttributeClass a => Maybe a
@@ -234,7 +234,7 @@ ipeObject (ImageO i) = image i
 ipeObject (GroupO g) = group g
 
 
-ipeObjectList              :: forall o. IpeObjectList o -> [Node]
+ipeObjectList              :: IpeObjectList -> [Node]
 ipeObjectList ONil         = []
 ipeObjectList (OCons o os) = (NodeElement . ipeObject $ o) : ipeObjectList os
 
