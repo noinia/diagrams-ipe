@@ -20,15 +20,13 @@ import Data.Typeable
 import Diagrams.Prelude
 
 import Diagrams.TwoD.Types
-
-
 import Diagrams.Backend.Ipe.Types hiding (Path)
 
 
-import Text.XML
+import Graphics.Rendering.Ipe
 
 import qualified Diagrams.Backend.Ipe.Types as I
-import qualified Graphics.Rendering.Ipe as R
+
 
 import qualified Filesystem.Path as FP
 
@@ -71,14 +69,14 @@ instance Num b => Backend Ipe (V2 b) where
     doRender _ opts (R r) = r
 
 
-renderAsXML ops = R.ipeDocument . fromIpeObjects . unIR . renderDia Ipe ops
+renderAsXML ops = fromIpeObjects . unIR . renderDia Ipe ops
 
 
-writeAsXML path ops = Text.XML.writeFile def path . renderAsXML ops
+writeAsXML path ops = writeIpeDocument path . renderAsXML ops
 
 
 example :: Diagram Ipe R2
-example = square 1 # fc red # lw 0 ||| square 1 # fc green # lw 0
+example = circle 1 # fc red # lw 0 ||| square 1 # fc green # lw 0
 
 testPath :: FP.FilePath
 testPath = "/tmp/out.ipe"

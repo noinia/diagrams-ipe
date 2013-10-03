@@ -23,7 +23,11 @@ library
 
   exposed-modules: Diagrams.Backend.Ipe
                    Diagrams.Backend.Ipe.Types
+                   Diagrams.Backend.Ipe.Attributes
+
                    Graphics.Rendering.Ipe
+                   Graphics.Rendering.Ipe.Attributes
+                   Graphics.Rendering.Ipe.IpeWriteable
 
   -- other-modules:
   -- other-extensions:
