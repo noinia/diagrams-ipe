@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Graphics.Rendering.Ipe.Attributes where
 
@@ -245,13 +246,8 @@ colorVal :: forall c. Color c => c -> Text
 colorVal = colorToRgbString
 
 
-colorToRgbString :: forall c . Color c => c -> Text
-colorToRgbString c = mconcat [ int r, " "
-                             , int g, " "
-                             , int b
-                             ]
-    where int d     = showT (round (d * 255) :: Int)
-          (r,g,b,_) = colorToSRGBA c
+colorToRgbString                             :: forall c . Color c => c -> Text
+colorToRgbString (colorToSRGBA -> (r,g,b,_)) = T.intercalate " " . map showT $ [r,g,b]
 
 
 opacityVal :: Double -> Text
@@ -259,5 +255,4 @@ opacityVal = const "1.0" -- TODO: this must be a symbolic name in Ipe
 
 
 colorToOpacity :: forall c . Color c => c -> Double
-colorToOpacity c = a
-    where (_,_,_,a) = colorToSRGBA c
+colorToOpacity (colorToSRGBA -> (_,_,_,a)) = a
