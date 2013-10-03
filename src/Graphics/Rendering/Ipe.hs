@@ -231,7 +231,7 @@ group (Group s cp obs) = Element "group" atts (ipeObjectList obs)
                            _  -> M.singleton "clip" $ opsText cp
 
 
-ipeObject            :: forall o. IpeObject o -> Element
+ipeObject            :: IsIpeNum a => IpeObject a o -> Element
 ipeObject (PathO  p) = path  p
 ipeObject (UseO   u) = use   u
 ipeObject (TextO  t) = text  t
@@ -239,7 +239,7 @@ ipeObject (ImageO i) = image i
 ipeObject (GroupO g) = group g
 
 
-ipeObjectList              :: IpeObjectList -> [Node]
+ipeObjectList              :: IsIpeNum a => IpeObjectList a -> [Node]
 ipeObjectList ONil         = []
 ipeObjectList (OCons o os) = (NodeElement . ipeObject $ o) : ipeObjectList os
 

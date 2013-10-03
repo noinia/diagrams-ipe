@@ -33,20 +33,20 @@ import qualified Filesystem.Path as FP
 
 --------------------------------------------------------------------------------
 
-renderAsXML     :: (OrderedField a, Semigroup m, Monoid m, FromIpeObjects c) =>
+renderAsXML     :: (OrderedField a, IsIpeNum a, Semigroup m, Monoid m, FromIpeObjects c) =>
                    IpeOptions -> QDiagram Ipe (V2 a) m -> c
 renderAsXML ops = fromIpeObjects . unIR . renderDia Ipe (O ops)
 
 
 
-writeAsXML          :: (OrderedField a, Semigroup m, Monoid m) =>
+writeAsXML          :: (OrderedField a, IsIpeNum a, Semigroup m, Monoid m) =>
                        FP.FilePath -> IpeOptions -> QDiagram Ipe (V2 a) m -> IO ()
 writeAsXML path ops = writeIpeDocument path . renderAsXML ops
 
 
 --------------------------------------------------------------------------------
 
-newtype IpeResult = IpeResult { unIR :: IpeObjectList }
+newtype IpeResult a = IpeResult { unIR :: IpeObjectList a }
     deriving (Typeable,Monoid)
 
 data Ipe = Ipe
@@ -70,11 +70,11 @@ instance Default (Options Ipe (V2 b)) where
     def = O def
 
 instance Num b => Backend Ipe (V2 b) where
-    data Render  Ipe (V2 b) = R IpeResult
-    type Result  Ipe (V2 b) = IpeResult
+    data Render  Ipe (V2 b) = R (IpeResult b)
+    type Result  Ipe (V2 b) = IpeResult b
     data Options Ipe (V2 b) = O IpeOptions
 
-    withStyle _ s t (R r) = R r -- AKA unimplemented. something like? R . IpeResult $ omap (applyStyle s) ol
+    withStyle _ s t (R r) = R . IpeResult . omap (applyStyle s) . unIR $ r
 
     doRender _ opts (R r) = r
 

@@ -43,7 +43,7 @@ instance Default IpeDocument where
     def = IpeDocument Nothing Nothing [] [] [def]
 
 
-singlePageDocument :: IpeObjectList -> IpeDocument
+singlePageDocument :: IsIpeNum a => IpeObjectList a -> IpeDocument
 singlePageDocument = fromIpeObjects
 
 
@@ -131,11 +131,12 @@ type ImageData = Text
 
 
 -- | Represents the <page> tag
-data Page = Page [LayerDefinition] [ViewDefinition] (Maybe Notes) IpeObjectList
-
+data Page where
+    Page :: IsIpeNum a =>
+            [LayerDefinition] -> [ViewDefinition] -> Maybe Notes -> IpeObjectList a -> Page
 
 instance Default Page where
-    def = fromIpeObjects mempty
+    def = fromIpeObjects (mempty :: IpeObjectList Double)
 
 
 
@@ -167,19 +168,21 @@ instance Default ViewDefinition where
 --------------------------------------------------------------------------------
 -- | An ipe-object. The main ``thing'' that defines the drawings
 
-data IpeObject o where
-    PathO         :: IsIpeNum a => Path a       -> IpeObject (Path a)
-    UseO          :: IsIpeNum a => Use  a       -> IpeObject (Use a)
-    TextO         :: IsIpeNum a => TextObject a -> IpeObject (TextObject a)
-    ImageO        :: IsIpeNum a => Image a      -> IpeObject (Image a)
-    GroupO        :: IsIpeNum a => Group a      -> IpeObject (Group a)
+data IpeObject a o where
+    PathO         :: Path a       -> IpeObject a (Path a)
+    UseO          :: Use  a       -> IpeObject a (Use a)
+    TextO         :: TextObject a -> IpeObject a (TextObject a)
+    ImageO        :: Image a      -> IpeObject a (Image a)
+    GroupO        :: Group a      -> IpeObject a (Group a)
 
-type instance V (IpeObject (Path a)) = V2 a
-type instance V (IpeObject (Use a)) = V2 a
-type instance V (IpeObject (TextObject a)) = V2 a
-type instance V (IpeObject (Image a)) = V2 a
-type instance V (IpeObject (Group a)) = V2 a
+type instance V (IpeObject a o) = V2 a
 
+instance HasStyle (IpeObject a o) where
+    applyStyle s (PathO  p) = PathO  $ applyStyle s p
+    applyStyle s (UseO   u) = UseO   $ applyStyle s u
+    applyStyle s (TextO  t) = TextO  $ applyStyle s t
+    applyStyle s (ImageO i) = ImageO $ applyStyle s i
+    applyStyle s (GroupO g) = GroupO $ applyStyle s g
 
 
 type StyleV2 a = Style (V2 a)
@@ -218,6 +221,11 @@ instance HasStyle (Use a) where
 -- | A piece of text
 data TextObject a = TextObject (StyleV2 a) LaTeX
 
+type instance V (TextObject a) = V2 a
+
+instance HasStyle (TextObject a) where
+    applyStyle s (TextObject s' t) = TextObject (s <> s') t
+
 ----------------------------------------
 -- | An image
 data Image a = ImageRef   (StyleV2 a) (Rect a) Int
@@ -227,9 +235,17 @@ data Image a = ImageRef   (StyleV2 a) (Rect a) Int
 data Rect a = Rect (P2 a) (P2 a)
             deriving (Show,Eq)
 
+
+type instance V (Image a) = V2 a
+
+instance HasStyle (Image a) where
+    applyStyle s (ImageRef   s' r i) = ImageRef   (s <> s') r i
+    applyStyle s (ImageEmbed s' r b) = ImageEmbed (s <> s') r b
+
+
 ----------------------------------------
 -- | Groups, collections of ipe objects with potentially transformations and or clipping paths
-data Group a = Group (StyleV2 a) (ClippingPath a) IpeObjectList
+data Group a = Group (StyleV2 a) (ClippingPath a) (IpeObjectList a)
 
 type instance V (Group a) = V2 a
 
@@ -242,30 +258,28 @@ instance Default (Group a) where
 
 type ClippingPath a = [Operation a]
 
-
 --------------------------------------------------------------------------------
 -- | Ipe Object lists
 
 
-data IpeObjectList where
-    ONil  ::                                 IpeObjectList
-    OCons :: IpeObject o -> IpeObjectList -> IpeObjectList
+data IpeObjectList a where
+    ONil  ::                                     IpeObjectList a
+    OCons :: IpeObject a o -> IpeObjectList a -> IpeObjectList a
 
-instance Monoid IpeObjectList where
+instance Monoid (IpeObjectList a) where
     mempty = ONil
     ONil          `mappend` ol = ol
     (OCons o ol') `mappend` ol = OCons o $ ol' `mappend` ol
 
 
-singleton :: IpeObject o -> IpeObjectList
+singleton :: IpeObject a o -> IpeObjectList a
 singleton = flip OCons ONil
 
 
 
 
-
-
-omap :: (forall a. IpeObject a -> IpeObject a) -> IpeObjectList -> IpeObjectList
+omap                :: (forall o. IpeObject a o -> IpeObject a o)
+                      -> IpeObjectList a -> IpeObjectList a
 omap f ONil         = ONil
 omap f (OCons o ol) = OCons (f o) $ omap f ol
 
@@ -275,9 +289,9 @@ omap f (OCons o ol) = OCons (f o) $ omap f ol
 -- | Easy ways of constructing certain Ipe data types from IpeObjects
 
 class FromIpeObjects c where
-    fromIpeObjects :: IpeObjectList -> c
+    fromIpeObjects :: IsIpeNum a => IpeObjectList a -> c
 
-    fromIpeObject :: IpeObject o -> c
+    fromIpeObject :: IsIpeNum a => IpeObject a o -> c
     fromIpeObject = fromIpeObjects . singleton
 
 instance FromIpeObjects IpeDocument where
