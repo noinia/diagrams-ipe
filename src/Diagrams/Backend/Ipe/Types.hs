@@ -184,6 +184,7 @@ type instance V (IpeObject (Group a)) = V2 a
 
 type StyleV2 a = Style (V2 a)
 
+
 ----------------------------------------
 -- | Paths:
 data Path a = Path (StyleV2 a) [Operation a]
@@ -258,6 +259,11 @@ instance Monoid IpeObjectList where
 
 singleton :: IpeObject o -> IpeObjectList
 singleton = flip OCons ONil
+
+
+
+
+
 
 omap :: (forall a. IpeObject a -> IpeObject a) -> IpeObjectList -> IpeObjectList
 omap f ONil         = ONil

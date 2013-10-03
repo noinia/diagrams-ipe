@@ -16,6 +16,7 @@ import Control.Monad.State
 
 import Data.Default
 import Data.Typeable
+import Data.Text(Text)
 
 import Diagrams.Prelude
 
@@ -32,6 +33,19 @@ import qualified Filesystem.Path as FP
 
 --------------------------------------------------------------------------------
 
+renderAsXML     :: (OrderedField a, Semigroup m, Monoid m, FromIpeObjects c) =>
+                   IpeOptions -> QDiagram Ipe (V2 a) m -> c
+renderAsXML ops = fromIpeObjects . unIR . renderDia Ipe (O ops)
+
+
+
+writeAsXML          :: (OrderedField a, Semigroup m, Monoid m) =>
+                       FP.FilePath -> IpeOptions -> QDiagram Ipe (V2 a) m -> IO ()
+writeAsXML path ops = writeIpeDocument path . renderAsXML ops
+
+
+--------------------------------------------------------------------------------
+
 newtype IpeResult = IpeResult { unIR :: IpeObjectList }
     deriving (Typeable,Monoid)
 
@@ -39,25 +53,21 @@ data Ipe = Ipe
          deriving (Show,Eq,Typeable)
 
 
+data IpeOptions = IpeOptions
+
+
+instance Default IpeOptions where
+    def = IpeOptions
+
+
+
 instance Monoid (Render Ipe (V2 b)) where
   mempty = R mempty
   (R r1) `mappend` (R r2) = R $ r1 `mappend` r2
 
 
-    -- R $ do
-    --   svg1 <- r1
-    --   svg2 <- r2_
-    --   return (svg1 `mappend` svg2)
-
-
-data IpeOptions = IpeOptions
-
-instance Default IpeOptions where
-    def = IpeOptions
-
 instance Default (Options Ipe (V2 b)) where
     def = O def
-
 
 instance Num b => Backend Ipe (V2 b) where
     data Render  Ipe (V2 b) = R IpeResult
@@ -69,10 +79,11 @@ instance Num b => Backend Ipe (V2 b) where
     doRender _ opts (R r) = r
 
 
-renderAsXML ops = fromIpeObjects . unIR . renderDia Ipe ops
 
 
-writeAsXML path ops = writeIpeDocument path . renderAsXML ops
+
+
+
 
 
 example :: Diagram Ipe R2
@@ -99,6 +110,10 @@ instance (IsIpeNum a, OrderedField a) => Renderable (Path (V2 a)) Ipe where
   render _ path = R $ IpeResult . I.singleton . PathO $ I.Path mempty ops
       where
         ops = concatMap renderLocTrail . pathTrails $ path
+
+
+-- instance Renderable Text Ipe where
+--     render _ t = R $ IpeResult . I.singleton . TextO $ I.TextObject mempty t
 
 --------------------------------------------------------------------------------
 
